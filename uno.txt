@@ -1,0 +1,72 @@
+ALTER PROCEDURE [dbo].[cuentasPorCobrarAbonoInsert]
+	-- Add the parameters for the stored procedure here
+	@nClientePK		decimal(18,0),
+	@mAbono			money
+AS
+BEGIN
+	--  added to prevent extra result sets from
+	-- interfering with SELECT statements.
+
+	/*declare @tablaCargos table(
+		nVentaPK		decimal(18,0),
+		mRestante		money
+	)
+	
+	insert into @tablaCargos*/
+	
+
+	 --Cursor
+	 SET NOCOUNT ON
+
+		DECLARE @nVentaPK decimal(18,0), @mRestante money, @mAbonoCopia	money
+
+		set @mAbonoCopia=@mAbono
+
+		DECLARE abono_cursor CURSOR FOR 
+
+		--consulta cursor
+	 select 
+
+	 ve.nVentaPK,
+	 ve.mRestante 
+
+	 from reservaciones re
+	 inner join hospedaje ho on re.nReservacionPK = ho.nReservacionPK
+	 inner join clientes cl  on cl.nClientePK=re.nClientePK
+	 inner join ventas ve    on ve.nHospedajePK=ho.nHospedajePK 
+
+	 where cl.nClientePK=@nClientePK and ve.bPagada=0 and re.dBaja is null and ho.dCheckout is not null
+	 order by ve.dCreada
+		--/consulta
+
+	OPEN abono_cursor
+
+	FETCH NEXT FROM abono_cursor
+	INTO @nVentaPK, @mRestante
+
+		WHILE @@FETCH_STATUS = 0 and @mAbono > 0
+		BEGIN
+			-- Declare an inner cursor based   
+			if @mRestante <= @mAbono
+			begin
+				update ventas set mRestante=0,bPagada=1 where nVentaPK=@nVentaPK
+				set @mAbono = @mAbono - @mRestante
+			end
+			else
+			begin
+				update ventas set mRestante=@mRestante - @mAbono where nVentaPK=@nVentaPK
+				set @mAbono = 0
+			end
+			FETCH NEXT FROM abono_cursor
+			INTO @nVentaPK, @mRestante
+		END 
+		CLOSE abono_cursor;
+		DEALLOCATE abono_cursor;
+	 --/cursor
+
+
+	 
+		update clientes set mSaldoPersistente=mSaldoPersistente + @mAbonoCopia where nClientePK=@nClientePK;
+	 
+	    
+END
